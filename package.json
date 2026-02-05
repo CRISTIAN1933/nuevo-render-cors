@@ -1,5 +1,5 @@
 {
-  "name": "hls-proxy-render",
+  "name": "render-hls-proxy",
   "version": "1.0.0",
   "type": "module",
   "main": "server.js",

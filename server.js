@@ -12,48 +12,62 @@ app.get("/proxy", async (req, res) => {
     try {
         const target = req.query.url;
         if (!target) {
-            return res.status(400).send("Missing url param");
+            return res.status(400).send("Missing url");
         }
 
         const decodedUrl = decodeURIComponent(target);
         const urlObj = new URL(decodedUrl);
 
+        const headers = {
+            "User-Agent":
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
+            "Accept": "*/*",
+            "Accept-Encoding": "identity",
+            "Connection": "keep-alive",
+            "Referer": urlObj.origin + "/",
+            "Origin": urlObj.origin,
+            "Host": urlObj.host,
+            "Range": req.headers.range || "bytes=0-"
+        };
+
         const response = await fetch(decodedUrl, {
-            headers: {
-                "User-Agent":
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
-                "Accept": "*/*",
-                "Origin": urlObj.origin,
-                "Referer": urlObj.origin + "/"
-            }
+            method: "GET",
+            headers
         });
 
-        const contentType = response.headers.get("content-type") || "";
         res.setHeader("Access-Control-Allow-Origin", "*");
-        res.setHeader("Content-Type", contentType);
+        res.setHeader("Access-Control-Allow-Headers", "*");
 
-        // ============================
-        // SI ES PLAYLIST M3U8
-        // ============================
-        if (contentType.includes("application/vnd.apple.mpegurl") || decodedUrl.endsWith(".m3u8")) {
-            let text = await response.text();
-            const base = decodedUrl.substring(0, decodedUrl.lastIndexOf("/") + 1);
+        const contentType = response.headers.get("content-type");
+        if (contentType) {
+            res.setHeader("Content-Type", contentType);
+        }
 
-            // Convertir paths relativos en absolutos usando el proxy
-            text = text.replace(
+        // ===============================
+        // M3U8
+        // ===============================
+        if (
+            decodedUrl.endsWith(".m3u8") ||
+            contentType?.includes("mpegurl")
+        ) {
+            let body = await response.text();
+            const baseUrl =
+                decodedUrl.substring(0, decodedUrl.lastIndexOf("/") + 1);
+
+            body = body.replace(
                 /^(?!https?:\/\/)(.*)$/gm,
                 line => {
                     if (line.startsWith("#")) return line;
-                    return `/proxy?url=${encodeURIComponent(base + line)}`;
+                    return `/proxy?url=${encodeURIComponent(baseUrl + line)}`;
                 }
             );
 
-            return res.send(text);
+            return res.send(body);
         }
 
-        // ============================
-        // SEGMENTOS BINARIOS (.ts, .m4s, etc)
-        // ============================
+        // ===============================
+        // TS / M4S / AAC
+        // ===============================
         const buffer = await response.arrayBuffer();
         return res.send(Buffer.from(buffer));
 
@@ -64,5 +78,5 @@ app.get("/proxy", async (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log("HLS Proxy running on port", PORT);
+    console.log("HLS proxy running on", PORT);
 });
